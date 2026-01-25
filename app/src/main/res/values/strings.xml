@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Pace Calculator</string>
+    <string name="enter_your_pace">Enter Your Pace</string>
+    <string name="converted_paces">Converted Paces</string>
+    <string name="min_mile">min/mile</string>
+    <string name="min_km">min/km</string>
+    <string name="speed">Speed</string>
+    <string name="pace">Pace</string>
+    <string name="mph">mph</string>
+    <string name="kph">km/h</string>
+    <string name="min_mi">min/mi</string>
+    <string name="per_mile">/mile</string>
+    <string name="per_km">/km</string>
+    <string name="built_for_runners">BUILT FOR RUNNERS</string>
+    <string name="toggle_dark_mode">Toggle dark mode</string>
+    <string name="minutes">Minutes</string>
+    <string name="seconds">Seconds</string>
+</resources>

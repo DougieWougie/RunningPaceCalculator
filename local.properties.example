@@ -1,0 +1,11 @@
+# Android SDK location - copy this file to local.properties and update the path
+# Typical Fedora locations:
+
+# If installed via Android Studio:
+sdk.dir=/home/YOUR_USERNAME/Android/Sdk
+
+# If installed via dnf (android-tools package):
+# sdk.dir=/usr/share/android-sdk
+
+# If installed manually:
+# sdk.dir=/opt/android-sdk
