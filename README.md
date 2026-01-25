@@ -1,4 +1,5 @@
 # Pace Calculator - Android App
+<img width="250" height="250" alt="Running Pace Calculator" src="https://github.com/user-attachments/assets/8d00a4e5-bfdf-41d7-be15-cf13e232a092" />
 
 A native Android implementation of the running pace calculator, built with Kotlin and Jetpack Compose.
 
