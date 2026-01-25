@@ -12,31 +12,16 @@ object PaceCalculator {
 
     fun calculate(minutes: Int, seconds: Int, inputUnit: PaceUnit): PaceResult? {
         val totalMinutes = minutes + seconds / 60.0
+        if (totalMinutes == 0.0) return null
 
-        if (totalMinutes == 0.0) {
-            return null
+        val (minPerMile, minPerKm) = when (inputUnit) {
+            PaceUnit.MILE -> totalMinutes to totalMinutes / MILES_TO_KM
+            PaceUnit.KM -> totalMinutes * MILES_TO_KM to totalMinutes
         }
-
-        val minPerMile: Double
-        val minPerKm: Double
-
-        when (inputUnit) {
-            PaceUnit.MILE -> {
-                minPerMile = totalMinutes
-                minPerKm = totalMinutes / MILES_TO_KM
-            }
-            PaceUnit.KM -> {
-                minPerKm = totalMinutes
-                minPerMile = totalMinutes * MILES_TO_KM
-            }
-        }
-
-        val mph = 60.0 / minPerMile
-        val kph = 60.0 / minPerKm
 
         return PaceResult(
-            mph = mph,
-            kph = kph,
+            mph = 60.0 / minPerMile,
+            kph = 60.0 / minPerKm,
             minPerMile = formatTime(minPerMile),
             minPerKm = formatTime(minPerKm)
         )
@@ -49,6 +34,4 @@ object PaceCalculator {
     }
 }
 
-enum class PaceUnit {
-    MILE, KM
-}
+enum class PaceUnit { MILE, KM }

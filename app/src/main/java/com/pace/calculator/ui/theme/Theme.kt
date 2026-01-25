@@ -1,12 +1,11 @@
 package com.pace.calculator.ui.theme
 
 import android.app.Activity
-import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
@@ -58,37 +57,21 @@ private val DarkColorScheme = darkColorScheme(
 
 data class PaceColors(
     val textMuted: Color,
-    val pulseColor: Color,
-    val accentGlow: Color
+    val pulseColor: Color
 )
 
-val LocalPaceColors = compositionLocalOf {
-    PaceColors(
-        textMuted = LightTextMuted,
-        pulseColor = LightPulse,
-        accentGlow = Color(0x4DFF3D00)
-    )
-}
+private val LightPaceColors = PaceColors(textMuted = LightTextMuted, pulseColor = LightPulse)
+private val DarkPaceColors = PaceColors(textMuted = DarkTextMuted, pulseColor = DarkPulse)
+
+val LocalPaceColors = compositionLocalOf { LightPaceColors }
 
 @Composable
 fun PaceCalculatorTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    darkTheme: Boolean,
     content: @Composable () -> Unit
 ) {
     val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
-    val paceColors = if (darkTheme) {
-        PaceColors(
-            textMuted = DarkTextMuted,
-            pulseColor = DarkPulse,
-            accentGlow = Color(0x66FF5722)
-        )
-    } else {
-        PaceColors(
-            textMuted = LightTextMuted,
-            pulseColor = LightPulse,
-            accentGlow = Color(0x4DFF3D00)
-        )
-    }
+    val paceColors = if (darkTheme) DarkPaceColors else LightPaceColors
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -103,9 +86,7 @@ fun PaceCalculatorTheme(
         }
     }
 
-    androidx.compose.runtime.CompositionLocalProvider(
-        LocalPaceColors provides paceColors
-    ) {
+    CompositionLocalProvider(LocalPaceColors provides paceColors) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = Typography,

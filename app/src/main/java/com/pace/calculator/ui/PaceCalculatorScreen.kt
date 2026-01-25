@@ -7,9 +7,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,10 +34,36 @@ import com.pace.calculator.PaceUnit
 import com.pace.calculator.ui.theme.BebasNeue
 import com.pace.calculator.ui.theme.LocalPaceColors
 
+// Shared shapes to avoid recreation
+private val CardShape = RoundedCornerShape(20.dp)
+private val ResultCardShape = RoundedCornerShape(16.dp)
+private val InputShape = RoundedCornerShape(12.dp)
+private val BadgeShape = RoundedCornerShape(8.dp)
+
+// Shared animation spec
+private val ColorAnimationSpec = tween<Color>(300)
+
+// Shared shadow color
+private val ShadowColor = Color.Black.copy(alpha = 0.08f)
+
+private data class ResultItem(
+    val label: String,
+    val getValue: (PaceCalculator.PaceResult?) -> String,
+    val unit: String
+)
+
+private val resultItems = listOf(
+    ResultItem("Speed", { it?.mph?.let { v -> "%.2f".format(v) } ?: "—" }, "mph"),
+    ResultItem("Speed", { it?.kph?.let { v -> "%.2f".format(v) } ?: "—" }, "km/h"),
+    ResultItem("Pace", { it?.minPerMile ?: "—" }, "min/mi"),
+    ResultItem("Pace", { it?.minPerKm ?: "—" }, "min/km")
+)
+
 @Composable
 fun PaceCalculatorScreen(
     isDarkTheme: Boolean,
-    onToggleTheme: () -> Unit
+    onToggleTheme: () -> Unit,
+    contentPadding: PaddingValues = PaddingValues()
 ) {
     var minutes by remember { mutableStateOf("8") }
     var seconds by remember { mutableStateOf("30") }
@@ -48,62 +71,52 @@ fun PaceCalculatorScreen(
 
     val paceColors = LocalPaceColors.current
 
-    val result = remember(minutes, seconds, inputUnit) {
-        val mins = minutes.toIntOrNull() ?: 0
-        val secs = seconds.toIntOrNull() ?: 0
-        PaceCalculator.calculate(mins, secs, inputUnit)
+    val result by remember(minutes, seconds, inputUnit) {
+        derivedStateOf {
+            val mins = minutes.toIntOrNull() ?: 0
+            val secs = seconds.toIntOrNull() ?: 0
+            PaceCalculator.calculate(mins, secs, inputUnit)
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // Animated background pulse
-        AnimatedPulseBackground(
-            pulseColor = paceColors.pulseColor
-        )
+        AnimatedPulseBackground(pulseColor = paceColors.pulseColor)
 
-        // Main content
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.systemBars)
+                .padding(contentPadding)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 24.dp)
         ) {
-            // Header
-            Header(
-                isDarkTheme = isDarkTheme,
-                onToggleTheme = onToggleTheme
-            )
+            Header(isDarkTheme = isDarkTheme, onToggleTheme = onToggleTheme)
 
             Spacer(modifier = Modifier.height(48.dp))
 
-            // Section label
-            SectionLabel(text = "ENTER YOUR PACE")
+            SectionLabel(text = "ENTER YOUR PACE", textMuted = paceColors.textMuted)
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Input card
             InputCard(
                 minutes = minutes,
                 onMinutesChange = { minutes = it },
                 seconds = seconds,
                 onSecondsChange = { seconds = it },
                 inputUnit = inputUnit,
-                onUnitChange = { inputUnit = it }
+                onUnitChange = { inputUnit = it },
+                textMuted = paceColors.textMuted
             )
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Results section
-            SectionLabel(text = "CONVERTED PACES")
+            SectionLabel(text = "CONVERTED PACES", textMuted = paceColors.textMuted)
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Results grid
-            ResultsGrid(result = result)
+            ResultsGrid(result = result, textMuted = paceColors.textMuted)
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Footer
             Text(
                 text = "BUILT FOR RUNNERS",
                 style = MaterialTheme.typography.labelSmall,
@@ -114,7 +127,6 @@ fun PaceCalculatorScreen(
 
             Spacer(modifier = Modifier.height(64.dp))
         }
-
     }
 }
 
@@ -122,23 +134,24 @@ fun PaceCalculatorScreen(
 private fun AnimatedPulseBackground(pulseColor: Color) {
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
 
+    val animationSpec = remember {
+        infiniteRepeatable<Float>(
+            animation = tween(4000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        )
+    }
+
     val scale by infiniteTransition.animateFloat(
         initialValue = 0.8f,
         targetValue = 1.1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(4000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
+        animationSpec = animationSpec,
         label = "pulseScale"
     )
 
     val alpha by infiniteTransition.animateFloat(
         initialValue = 0.5f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(4000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
+        animationSpec = animationSpec,
         label = "pulseAlpha"
     )
 
@@ -172,16 +185,11 @@ private fun Header(
     ) {
         Text(
             text = "PACE",
-            style = MaterialTheme.typography.headlineLarge.copy(
-                letterSpacing = 6.sp
-            ),
+            style = MaterialTheme.typography.headlineLarge.copy(letterSpacing = 6.sp),
             color = MaterialTheme.colorScheme.primary
         )
 
-        ThemeToggle(
-            isDarkTheme = isDarkTheme,
-            onToggle = onToggleTheme
-        )
+        ThemeToggle(isDarkTheme = isDarkTheme, onToggle = onToggleTheme)
     }
 }
 
@@ -192,12 +200,11 @@ private fun ThemeToggle(
 ) {
     val thumbOffset by animateDpAsState(
         targetValue = if (isDarkTheme) 24.dp else 0.dp,
-        animationSpec = spring(
-            dampingRatio = 0.6f,
-            stiffness = Spring.StiffnessMedium
-        ),
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMedium),
         label = "thumbOffset"
     )
+
+    val interactionSource = remember { MutableInteractionSource() }
 
     Box(
         modifier = Modifier
@@ -205,16 +212,8 @@ private fun ThemeToggle(
             .height(32.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .border(
-                width = 2.dp,
-                color = MaterialTheme.colorScheme.outline,
-                shape = RoundedCornerShape(16.dp)
-            )
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onToggle
-            )
+            .border(2.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onToggle)
             .padding(3.dp)
     ) {
         Box(
@@ -235,11 +234,11 @@ private fun ThemeToggle(
 }
 
 @Composable
-private fun SectionLabel(text: String) {
+private fun SectionLabel(text: String, textMuted: Color) {
     Text(
         text = text,
         style = MaterialTheme.typography.labelSmall,
-        color = LocalPaceColors.current.textMuted
+        color = textMuted
     )
 }
 
@@ -250,40 +249,36 @@ private fun InputCard(
     seconds: String,
     onSecondsChange: (String) -> Unit,
     inputUnit: PaceUnit,
-    onUnitChange: (PaceUnit) -> Unit
+    onUnitChange: (PaceUnit) -> Unit,
+    textMuted: Color
 ) {
     var isFocused by remember { mutableStateOf(false) }
 
     val borderColor by animateColorAsState(
         targetValue = if (isFocused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-        animationSpec = tween(300),
+        animationSpec = ColorAnimationSpec,
         label = "borderColor"
     )
+
+    val shadowColor = if (isFocused) MaterialTheme.colorScheme.primary.copy(alpha = 0.3f) else ShadowColor
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .shadow(
                 elevation = if (isFocused) 16.dp else 8.dp,
-                shape = RoundedCornerShape(20.dp),
-                ambientColor = if (isFocused) MaterialTheme.colorScheme.primary.copy(alpha = 0.3f) else Color.Black.copy(alpha = 0.08f),
-                spotColor = if (isFocused) MaterialTheme.colorScheme.primary.copy(alpha = 0.3f) else Color.Black.copy(alpha = 0.08f)
+                shape = CardShape,
+                ambientColor = shadowColor,
+                spotColor = shadowColor
             ),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
+        shape = CardShape,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(
             modifier = Modifier
-                .border(
-                    width = 1.dp,
-                    color = borderColor,
-                    shape = RoundedCornerShape(20.dp)
-                )
+                .border(1.dp, borderColor, CardShape)
                 .padding(28.dp)
         ) {
-            // Pace input row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -296,27 +291,23 @@ private fun InputCard(
                 ) {
                     TimeInput(
                         value = minutes,
-                        onValueChange = { if (it.length <= 2) onMinutesChange(it.filter { c -> c.isDigit() }) },
+                        onValueChange = { if (it.length <= 2) onMinutesChange(it.filter(Char::isDigit)) },
                         onFocusChanged = { isFocused = it },
                         modifier = Modifier.width(72.dp)
                     )
 
                     Text(
                         text = ":",
-                        style = TextStyle(
-                            fontFamily = BebasNeue,
-                            fontSize = 40.sp
-                        ),
-                        color = LocalPaceColors.current.textMuted
+                        style = TextStyle(fontFamily = BebasNeue, fontSize = 40.sp),
+                        color = textMuted
                     )
 
                     TimeInput(
                         value = seconds,
-                        onValueChange = {
-                            if (it.length <= 2) {
-                                val filtered = it.filter { c -> c.isDigit() }
-                                val value = filtered.toIntOrNull() ?: 0
-                                if (value <= 59) onSecondsChange(filtered)
+                        onValueChange = { input ->
+                            if (input.length <= 2) {
+                                val filtered = input.filter(Char::isDigit)
+                                if ((filtered.toIntOrNull() ?: 0) <= 59) onSecondsChange(filtered)
                             }
                         },
                         onFocusChanged = { isFocused = it },
@@ -324,10 +315,9 @@ private fun InputCard(
                     )
                 }
 
-                // Unit badge
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(BadgeShape)
                         .background(MaterialTheme.colorScheme.primary)
                         .padding(horizontal = 12.dp, vertical = 8.dp)
                 ) {
@@ -341,11 +331,7 @@ private fun InputCard(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Unit selector
-            UnitSelector(
-                selectedUnit = inputUnit,
-                onUnitChange = onUnitChange
-            )
+            UnitSelector(selectedUnit = inputUnit, onUnitChange = onUnitChange)
         }
     }
 }
@@ -361,13 +347,13 @@ private fun TimeInput(
 
     val backgroundColor by animateColorAsState(
         targetValue = if (isFocused) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant,
-        animationSpec = tween(300),
+        animationSpec = ColorAnimationSpec,
         label = "inputBg"
     )
 
     val borderColor by animateColorAsState(
         targetValue = if (isFocused) MaterialTheme.colorScheme.primary else Color.Transparent,
-        animationSpec = tween(300),
+        animationSpec = ColorAnimationSpec,
         label = "inputBorder"
     )
 
@@ -376,9 +362,9 @@ private fun TimeInput(
         onValueChange = onValueChange,
         modifier = modifier
             .height(64.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(InputShape)
             .background(backgroundColor)
-            .border(2.dp, borderColor, RoundedCornerShape(12.dp))
+            .border(2.dp, borderColor, InputShape)
             .onFocusChanged {
                 isFocused = it.isFocused
                 onFocusChanged(it.isFocused)
@@ -393,10 +379,7 @@ private fun TimeInput(
         singleLine = true,
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
         decorationBox = { innerTextField ->
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier.fillMaxSize()
-            ) {
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                 innerTextField()
             }
         }
@@ -411,24 +394,19 @@ private fun UnitSelector(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(InputShape)
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .padding(4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        UnitButton(
-            text = "min/mile",
-            isSelected = selectedUnit == PaceUnit.MILE,
-            onClick = { onUnitChange(PaceUnit.MILE) },
-            modifier = Modifier.weight(1f)
-        )
-
-        UnitButton(
-            text = "min/km",
-            isSelected = selectedUnit == PaceUnit.KM,
-            onClick = { onUnitChange(PaceUnit.KM) },
-            modifier = Modifier.weight(1f)
-        )
+        PaceUnit.entries.forEach { unit ->
+            UnitButton(
+                text = if (unit == PaceUnit.MILE) "min/mile" else "min/km",
+                isSelected = selectedUnit == unit,
+                onClick = { onUnitChange(unit) },
+                modifier = Modifier.weight(1f)
+            )
+        }
     }
 }
 
@@ -441,64 +419,41 @@ private fun UnitButton(
 ) {
     val backgroundColor by animateColorAsState(
         targetValue = if (isSelected) MaterialTheme.colorScheme.surface else Color.Transparent,
-        animationSpec = tween(300),
+        animationSpec = ColorAnimationSpec,
         label = "unitBtnBg"
     )
 
     val textColor by animateColorAsState(
         targetValue = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = tween(300),
+        animationSpec = ColorAnimationSpec,
         label = "unitBtnText"
     )
 
+    val interactionSource = remember { MutableInteractionSource() }
+
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
+            .clip(BadgeShape)
             .background(backgroundColor)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick
-            )
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
             .padding(vertical = 12.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelLarge,
-            color = textColor
-        )
+        Text(text = text, style = MaterialTheme.typography.labelLarge, color = textColor)
     }
 }
 
 @Composable
-private fun ResultsGrid(result: PaceCalculator.PaceResult?) {
-    Column(
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        ResultCard(
-            label = "Speed",
-            value = result?.mph?.let { String.format("%.2f", it) } ?: "—",
-            unit = "mph"
-        )
-
-        ResultCard(
-            label = "Speed",
-            value = result?.kph?.let { String.format("%.2f", it) } ?: "—",
-            unit = "km/h"
-        )
-
-        ResultCard(
-            label = "Pace",
-            value = result?.minPerMile ?: "—",
-            unit = "min/mi"
-        )
-
-        ResultCard(
-            label = "Pace",
-            value = result?.minPerKm ?: "—",
-            unit = "min/km"
-        )
+private fun ResultsGrid(result: PaceCalculator.PaceResult?, textMuted: Color) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        resultItems.forEach { item ->
+            ResultCard(
+                label = item.label,
+                value = item.getValue(result),
+                unit = item.unit,
+                textMuted = textMuted
+            )
+        }
     }
 }
 
@@ -506,30 +461,20 @@ private fun ResultsGrid(result: PaceCalculator.PaceResult?) {
 private fun ResultCard(
     label: String,
     value: String,
-    unit: String
+    unit: String,
+    textMuted: Color
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(
-                elevation = 8.dp,
-                shape = RoundedCornerShape(16.dp),
-                ambientColor = Color.Black.copy(alpha = 0.08f),
-                spotColor = Color.Black.copy(alpha = 0.08f)
-            ),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
+            .shadow(elevation = 8.dp, shape = ResultCardShape, ambientColor = ShadowColor, spotColor = ShadowColor),
+        shape = ResultCardShape,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .border(
-                    width = 1.dp,
-                    color = MaterialTheme.colorScheme.outline,
-                    shape = RoundedCornerShape(16.dp)
-                )
+                .border(1.dp, MaterialTheme.colorScheme.outline, ResultCardShape)
                 .padding(24.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
@@ -538,25 +483,21 @@ private fun ResultCard(
                 Text(
                     text = label.uppercase(),
                     style = MaterialTheme.typography.labelSmall,
-                    color = LocalPaceColors.current.textMuted
+                    color = textMuted
                 )
 
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
                     text = value,
-                    style = TextStyle(
-                        fontFamily = BebasNeue,
-                        fontSize = 36.sp,
-                        letterSpacing = 1.sp
-                    ),
+                    style = TextStyle(fontFamily = BebasNeue, fontSize = 36.sp, letterSpacing = 1.sp),
                     color = MaterialTheme.colorScheme.onSurface
                 )
             }
 
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(BadgeShape)
                     .background(MaterialTheme.colorScheme.surfaceVariant)
                     .padding(horizontal = 14.dp, vertical = 8.dp)
             ) {
@@ -569,4 +510,3 @@ private fun ResultCard(
         }
     }
 }
-
