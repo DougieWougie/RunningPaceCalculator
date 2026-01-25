@@ -117,6 +117,14 @@ fun PaceCalculatorScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
+            SectionLabel(text = "RACE TIMES", textMuted = paceColors.textMuted)
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            RaceTimesGrid(result = result, textMuted = paceColors.textMuted)
+
+            Spacer(modifier = Modifier.height(32.dp))
+
             Text(
                 text = "BUILT FOR RUNNERS",
                 style = MaterialTheme.typography.labelSmall,
@@ -507,6 +515,77 @@ private fun ResultCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun RaceTimesGrid(result: PaceCalculator.PaceResult?, textMuted: Color) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            RaceTimeCard(
+                label = PaceCalculator.RaceDistance.FIVE_K.label,
+                time = result?.raceTimes?.get(PaceCalculator.RaceDistance.FIVE_K) ?: "—",
+                textMuted = textMuted,
+                modifier = Modifier.weight(1f)
+            )
+            RaceTimeCard(
+                label = PaceCalculator.RaceDistance.TEN_K.label,
+                time = result?.raceTimes?.get(PaceCalculator.RaceDistance.TEN_K) ?: "—",
+                textMuted = textMuted,
+                modifier = Modifier.weight(1f)
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            RaceTimeCard(
+                label = PaceCalculator.RaceDistance.HALF_MARATHON.label,
+                time = result?.raceTimes?.get(PaceCalculator.RaceDistance.HALF_MARATHON) ?: "—",
+                textMuted = textMuted,
+                modifier = Modifier.weight(1f)
+            )
+            RaceTimeCard(
+                label = PaceCalculator.RaceDistance.MARATHON.label,
+                time = result?.raceTimes?.get(PaceCalculator.RaceDistance.MARATHON) ?: "—",
+                textMuted = textMuted,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun RaceTimeCard(
+    label: String,
+    time: String,
+    textMuted: Color,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .shadow(elevation = 8.dp, shape = ResultCardShape, ambientColor = ShadowColor, spotColor = ShadowColor),
+        shape = ResultCardShape,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, MaterialTheme.colorScheme.outline, ResultCardShape)
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = label.uppercase(),
+                style = MaterialTheme.typography.labelSmall,
+                color = textMuted
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = time,
+                style = TextStyle(fontFamily = BebasNeue, fontSize = 28.sp, letterSpacing = 1.sp),
+                color = MaterialTheme.colorScheme.onSurface
+            )
         }
     }
 }
