@@ -206,38 +206,19 @@ private fun ThemeToggle(
     isDarkTheme: Boolean,
     onToggle: () -> Unit
 ) {
-    val thumbOffset by animateDpAsState(
-        targetValue = if (isDarkTheme) 24.dp else 0.dp,
-        animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMedium),
-        label = "thumbOffset"
-    )
-
-    val interactionSource = remember { MutableInteractionSource() }
-
-    Box(
-        modifier = Modifier
-            .width(56.dp)
-            .height(32.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .border(2.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
-            .clickable(interactionSource = interactionSource, indication = null, onClick = onToggle)
-            .padding(3.dp)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .offset(x = thumbOffset)
-                .size(22.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primary),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = if (isDarkTheme) "\u263E" else "\u2600",
-                fontSize = 12.sp,
-                color = Color.White
-            )
-        }
+        Text(
+            text = "Dark",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Switch(
+            checked = isDarkTheme,
+            onCheckedChange = { onToggle() }
+        )
     }
 }
 
