@@ -167,20 +167,20 @@ private fun AnimatedPulseBackground(pulseColor: Color) {
 
     val animationSpec = remember {
         infiniteRepeatable<Float>(
-            animation = tween(4000, easing = FastOutSlowInEasing),
+            animation = tween(2000, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         )
     }
 
     val scale by infiniteTransition.animateFloat(
-        initialValue = 0.8f,
-        targetValue = 1.1f,
+        initialValue = 0.6f,
+        targetValue = 1.3f,
         animationSpec = animationSpec,
         label = "pulseScale"
     )
 
     val alpha by infiniteTransition.animateFloat(
-        initialValue = 0.5f,
+        initialValue = 0.3f,
         targetValue = 1f,
         animationSpec = animationSpec,
         label = "pulseAlpha"
@@ -196,7 +196,7 @@ private fun AnimatedPulseBackground(pulseColor: Color) {
                         pulseColor.copy(alpha = alpha * pulseColor.alpha),
                         Color.Transparent
                     ),
-                    radius = 1000f
+                    radius = 1200f
                 )
             )
     )
