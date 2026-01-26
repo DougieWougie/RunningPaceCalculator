@@ -59,6 +59,9 @@ private val resultItems = listOf(
     ResultItem("Pace", { it?.minPerKm ?: "—" }, "min/km")
 )
 
+private const val MILES_PER_KM = 0.621371
+private const val KM_PER_MILE = 1.60934
+
 @Composable
 fun PaceCalculatorScreen(
     isDarkTheme: Boolean,
@@ -77,6 +80,26 @@ fun PaceCalculatorScreen(
             val secs = seconds.toIntOrNull() ?: 0
             PaceCalculator.calculate(mins, secs, inputUnit)
         }
+    }
+
+    fun convertPace(newUnit: PaceUnit) {
+        if (newUnit == inputUnit) return
+
+        val mins = minutes.toIntOrNull() ?: 0
+        val secs = seconds.toIntOrNull() ?: 0
+        val totalSeconds = mins * 60 + secs
+
+        val convertedSeconds = if (newUnit == PaceUnit.KM) {
+            // Converting from min/mile to min/km (shorter distance = faster pace)
+            (totalSeconds * MILES_PER_KM).toInt()
+        } else {
+            // Converting from min/km to min/mile (longer distance = slower pace)
+            (totalSeconds * KM_PER_MILE).toInt()
+        }
+
+        minutes = (convertedSeconds / 60).toString()
+        seconds = (convertedSeconds % 60).toString()
+        inputUnit = newUnit
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -103,7 +126,7 @@ fun PaceCalculatorScreen(
                 seconds = seconds,
                 onSecondsChange = { seconds = it },
                 inputUnit = inputUnit,
-                onUnitChange = { inputUnit = it },
+                onUnitChange = { convertPace(it) },
                 textMuted = paceColors.textMuted
             )
 
