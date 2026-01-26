@@ -457,13 +457,37 @@ private fun UnitButton(
 
 @Composable
 private fun ResultsGrid(result: PaceCalculator.PaceResult?, textMuted: Color) {
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        resultItems.forEach { item ->
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             ResultCard(
-                label = item.label,
-                value = item.getValue(result),
-                unit = item.unit,
-                textMuted = textMuted
+                label = resultItems[0].label,
+                value = resultItems[0].getValue(result),
+                unit = resultItems[0].unit,
+                textMuted = textMuted,
+                modifier = Modifier.weight(1f)
+            )
+            ResultCard(
+                label = resultItems[1].label,
+                value = resultItems[1].getValue(result),
+                unit = resultItems[1].unit,
+                textMuted = textMuted,
+                modifier = Modifier.weight(1f)
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            ResultCard(
+                label = resultItems[2].label,
+                value = resultItems[2].getValue(result),
+                unit = resultItems[2].unit,
+                textMuted = textMuted,
+                modifier = Modifier.weight(1f)
+            )
+            ResultCard(
+                label = resultItems[3].label,
+                value = resultItems[3].getValue(result),
+                unit = resultItems[3].unit,
+                textMuted = textMuted,
+                modifier = Modifier.weight(1f)
             )
         }
     }
@@ -474,51 +498,43 @@ private fun ResultCard(
     label: String,
     value: String,
     unit: String,
-    textMuted: Color
+    textMuted: Color,
+    modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
+        modifier = modifier
             .shadow(elevation = 8.dp, shape = ResultCardShape, ambientColor = ShadowColor, spotColor = ShadowColor),
         shape = ResultCardShape,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .border(1.dp, MaterialTheme.colorScheme.outline, ResultCardShape)
-                .padding(24.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Column {
-                Text(
-                    text = label.uppercase(),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = textMuted
-                )
+            Text(
+                text = label.uppercase(),
+                style = MaterialTheme.typography.labelSmall,
+                color = textMuted
+            )
 
-                Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-                Text(
-                    text = value,
-                    style = TextStyle(fontFamily = BebasNeue, fontSize = 36.sp, letterSpacing = 1.sp),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
+            Text(
+                text = value,
+                style = TextStyle(fontFamily = BebasNeue, fontSize = 28.sp, letterSpacing = 1.sp),
+                color = MaterialTheme.colorScheme.onSurface
+            )
 
-            Box(
-                modifier = Modifier
-                    .clip(BadgeShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .padding(horizontal = 14.dp, vertical = 8.dp)
-            ) {
-                Text(
-                    text = unit,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(
+                text = unit,
+                style = MaterialTheme.typography.bodySmall,
+                color = textMuted
+            )
         }
     }
 }
