@@ -2,16 +2,17 @@ package com.pace.calculator.ui
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -19,16 +20,20 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -36,7 +41,9 @@ import com.pace.calculator.PaceCalculator
 import com.pace.calculator.PaceUnit
 import com.pace.calculator.ui.theme.BebasNeue
 import com.pace.calculator.ui.theme.LocalPaceColors
+import kotlin.math.abs
 import kotlin.math.roundToLong
+import kotlinx.coroutines.delay
 
 // Shared shapes to avoid recreation
 private val CardShape = RoundedCornerShape(20.dp)
@@ -50,18 +57,31 @@ private val ColorAnimationSpec = tween<Color>(300)
 // Shared shadow color
 private val ShadowColor = Color.Black.copy(alpha = 0.08f)
 
-private data class ResultItem(
-    val label: String,
-    val getValue: (PaceCalculator.PaceResult?) -> String,
-    val unit: String
+// Radius of the heartbeat glow, in pixels
+private const val PulseRadius = 1200f
+
+// Pace limits for the stepper buttons, in seconds per unit
+private const val MIN_PACE_SECONDS = 60L
+private const val MAX_PACE_SECONDS = 59 * 60 + 59L
+
+private const val FINE_STEP_SECONDS = 1
+private const val COARSE_STEP_SECONDS = 5
+
+// Holding a stepper button repeats the step
+private const val HOLD_DELAY_MILLIS = 400L
+private const val REPEAT_INTERVAL_MILLIS = 100L
+
+// Font padding is dropped so the unit sits close under the figure
+@Suppress("DEPRECATION")
+private val HeroPaceStyle = TextStyle(
+    fontFamily = BebasNeue,
+    fontSize = 96.sp,
+    lineHeight = 96.sp,
+    letterSpacing = 2.sp,
+    platformStyle = PlatformTextStyle(includeFontPadding = false)
 )
 
-private val resultItems = listOf(
-    ResultItem("Speed", { it?.mph?.let { v -> "%.2f".format(v) } ?: "—" }, "mph"),
-    ResultItem("Speed", { it?.kph?.let { v -> "%.2f".format(v) } ?: "—" }, "km/h"),
-    ResultItem("Pace", { it?.minPerMile ?: "—" }, "min/mi"),
-    ResultItem("Pace", { it?.minPerKm ?: "—" }, "min/km")
-)
+private fun unitLabel(unit: PaceUnit) = if (unit == PaceUnit.MILE) "min/mile" else "min/km"
 
 @Composable
 fun PaceCalculatorScreen(
@@ -72,45 +92,41 @@ fun PaceCalculatorScreen(
     onPaceChange: (Double, PaceUnit) -> Unit,
     contentPadding: PaddingValues = PaddingValues()
 ) {
-    val initialRounded = initialPaceSeconds.roundToLong()
-
-    var minutes by rememberSaveable { mutableStateOf((initialRounded / 60).toString()) }
-    var seconds by rememberSaveable { mutableStateOf((initialRounded % 60).toString().padStart(2, '0')) }
+    // Kept unrounded, so toggling units never changes the pace
+    var paceSeconds by rememberSaveable { mutableStateOf(initialPaceSeconds) }
     var inputUnit by rememberSaveable { mutableStateOf(initialUnit) }
-
-    // Unrounded pace behind the fields after a unit toggle, so toggling never
-    // changes the pace. Cleared as soon as the user types a new value.
-    var convertedPace by rememberSaveable { mutableStateOf<Double?>(initialPaceSeconds) }
 
     val paceColors = LocalPaceColors.current
 
-    fun paceSeconds(): Double {
-        val mins = minutes.toIntOrNull() ?: 0
-        val secs = seconds.toIntOrNull() ?: 0
-        return convertedPace ?: (mins * 60 + secs).toDouble()
-    }
-
-    val result by remember(minutes, seconds, inputUnit, convertedPace) {
-        derivedStateOf {
-            PaceCalculator.calculate(paceSeconds(), inputUnit)
-        }
+    val result = remember(paceSeconds, inputUnit) {
+        PaceCalculator.calculate(paceSeconds, inputUnit)
     }
 
     fun convertPace(newUnit: PaceUnit) {
         if (newUnit == inputUnit) return
 
-        val converted = PaceCalculator.convert(paceSeconds(), inputUnit, newUnit)
-        val rounded = converted.roundToLong()
-
-        minutes = (rounded / 60).toString()
-        seconds = (rounded % 60).toString().padStart(2, '0')
-        convertedPace = converted
+        paceSeconds = PaceCalculator.convert(paceSeconds, inputUnit, newUnit)
         inputUnit = newUnit
     }
 
-    val currentPace = paceSeconds()
-    LaunchedEffect(currentPace, inputUnit) {
-        if (currentPace > 0) onPaceChange(currentPace, inputUnit)
+    fun stepPace(deltaSeconds: Int) {
+        val current = paceSeconds.roundToLong()
+        val step = abs(deltaSeconds)
+
+        // Steps land on multiples of the step size, so 5:17 goes to 5:20 or 5:15
+        val target = if (deltaSeconds > 0) {
+            (current / step + 1) * step
+        } else {
+            (current + step - 1) / step * step - step
+        }
+
+        paceSeconds = target
+            .coerceIn(MIN_PACE_SECONDS, maxOf(current, MAX_PACE_SECONDS))
+            .toDouble()
+    }
+
+    LaunchedEffect(paceSeconds, inputUnit) {
+        if (paceSeconds > 0) onPaceChange(paceSeconds, inputUnit)
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -120,54 +136,53 @@ fun PaceCalculatorScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(contentPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 24.dp)
+                .padding(horizontal = 20.dp)
         ) {
             Header(isDarkTheme = isDarkTheme, onToggleTheme = onToggleTheme)
 
-            Spacer(modifier = Modifier.height(48.dp))
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                HeroPace(
+                    pace = (if (inputUnit == PaceUnit.MILE) result?.minPerMile else result?.minPerKm) ?: "—",
+                    unit = unitLabel(inputUnit),
+                    textMuted = paceColors.textMuted
+                )
 
-            SectionLabel(text = "ENTER YOUR PACE", textMuted = paceColors.textMuted)
+                Spacer(modifier = Modifier.height(12.dp))
 
-            Spacer(modifier = Modifier.height(12.dp))
+                ResultsRow(result = result, inputUnit = inputUnit, textMuted = paceColors.textMuted)
 
-            InputCard(
-                minutes = minutes,
-                onMinutesChange = { minutes = it; convertedPace = null },
-                seconds = seconds,
-                onSecondsChange = { seconds = it; convertedPace = null },
+                Spacer(modifier = Modifier.height(12.dp))
+
+                SectionLabel(text = "RACE TIMES", textMuted = paceColors.textMuted)
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                RaceTimesGrid(result = result, textMuted = paceColors.textMuted)
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = "BUILT FOR RUNNERS",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = paceColors.textMuted,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
+            ControlPanel(
                 inputUnit = inputUnit,
                 onUnitChange = { convertPace(it) },
-                textMuted = paceColors.textMuted
+                onStep = { stepPace(it) }
             )
 
-            Spacer(modifier = Modifier.height(32.dp))
-
-            SectionLabel(text = "CONVERTED PACES", textMuted = paceColors.textMuted)
-
             Spacer(modifier = Modifier.height(12.dp))
-
-            ResultsGrid(result = result, textMuted = paceColors.textMuted)
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            SectionLabel(text = "RACE TIMES", textMuted = paceColors.textMuted)
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            RaceTimesGrid(result = result, textMuted = paceColors.textMuted)
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            Text(
-                text = "BUILT FOR RUNNERS",
-                style = MaterialTheme.typography.labelSmall,
-                color = paceColors.textMuted,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(64.dp))
         }
     }
 }
@@ -200,7 +215,7 @@ private fun AnimatedPulseBackground(pulseColor: Color) {
     val brush = remember(pulseColor) {
         Brush.radialGradient(
             colors = listOf(pulseColor, Color.Transparent),
-            radius = 1200f
+            radius = PulseRadius
         )
     }
 
@@ -214,7 +229,9 @@ private fun AnimatedPulseBackground(pulseColor: Color) {
                 this.alpha = alpha.value
                 compositingStrategy = CompositingStrategy.ModulateAlpha
             }
-            .background(brush)
+            // Drawn as a circle that may spill past the box, so the glow fades out
+            // rather than being cut off at the box edges when it is scaled down
+            .drawBehind { drawCircle(brush = brush, radius = PulseRadius) }
     )
 }
 
@@ -226,7 +243,7 @@ private fun Header(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 16.dp),
+            .padding(top = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -271,128 +288,138 @@ private fun SectionLabel(text: String, textMuted: Color) {
 }
 
 @Composable
-private fun InputCard(
-    minutes: String,
-    onMinutesChange: (String) -> Unit,
-    seconds: String,
-    onSecondsChange: (String) -> Unit,
+private fun HeroPace(pace: String, unit: String, textMuted: Color) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = pace,
+            style = HeroPaceStyle,
+            color = MaterialTheme.colorScheme.onBackground,
+            maxLines = 1
+        )
+
+        Text(
+            text = unit,
+            style = MaterialTheme.typography.titleLarge,
+            color = textMuted
+        )
+    }
+}
+
+@Composable
+private fun ControlPanel(
     inputUnit: PaceUnit,
     onUnitChange: (PaceUnit) -> Unit,
-    textMuted: Color
+    onStep: (Int) -> Unit
 ) {
-    var isFocused by remember { mutableStateOf(false) }
-
-    val borderColor by animateColorAsState(
-        targetValue = if (isFocused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-        animationSpec = ColorAnimationSpec,
-        label = "borderColor"
-    )
-
-    val shadowColor = if (isFocused) MaterialTheme.colorScheme.primary.copy(alpha = 0.3f) else ShadowColor
-
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(
-                elevation = if (isFocused) 16.dp else 8.dp,
-                shape = CardShape,
-                ambientColor = shadowColor,
-                spotColor = shadowColor
-            ),
+            .shadow(elevation = 8.dp, shape = CardShape, ambientColor = ShadowColor, spotColor = ShadowColor),
         shape = CardShape,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(
             modifier = Modifier
-                .border(1.dp, borderColor, CardShape)
-                .padding(28.dp)
+                .border(1.dp, MaterialTheme.colorScheme.outline, CardShape)
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                TimeInput(
-                    value = minutes,
-                    onValueChange = { if (it.length <= 2) onMinutesChange(it.filter(Char::isDigit)) },
-                    onFocusChanged = { isFocused = it },
-                    modifier = Modifier.width(72.dp)
-                )
+            UnitSelector(selectedUnit = inputUnit, onUnitChange = onUnitChange)
 
-                Text(
-                    text = ":",
-                    style = TextStyle(fontFamily = BebasNeue, fontSize = 40.sp),
-                    color = textMuted
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                StepButton(
+                    text = "−$FINE_STEP_SECONDS",
+                    description = "Subtract $FINE_STEP_SECONDS second",
+                    prominent = false,
+                    onStep = { onStep(-FINE_STEP_SECONDS) },
+                    modifier = Modifier.weight(1f)
                 )
-
-                TimeInput(
-                    value = seconds,
-                    onValueChange = { input ->
-                        if (input.length <= 2) {
-                            val filtered = input.filter(Char::isDigit)
-                            if ((filtered.toIntOrNull() ?: 0) <= 59) onSecondsChange(filtered)
-                        }
-                    },
-                    onFocusChanged = { isFocused = it },
-                    modifier = Modifier.width(72.dp)
+                StepButton(
+                    text = "+$FINE_STEP_SECONDS",
+                    description = "Add $FINE_STEP_SECONDS second",
+                    prominent = false,
+                    onStep = { onStep(FINE_STEP_SECONDS) },
+                    modifier = Modifier.weight(1f)
                 )
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
-
-            UnitSelector(selectedUnit = inputUnit, onUnitChange = onUnitChange)
+            // The most used buttons sit lowest, closest to the thumb
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                StepButton(
+                    text = "−$COARSE_STEP_SECONDS",
+                    description = "Subtract $COARSE_STEP_SECONDS seconds",
+                    prominent = true,
+                    onStep = { onStep(-COARSE_STEP_SECONDS) },
+                    modifier = Modifier.weight(1f)
+                )
+                StepButton(
+                    text = "+$COARSE_STEP_SECONDS",
+                    description = "Add $COARSE_STEP_SECONDS seconds",
+                    prominent = true,
+                    onStep = { onStep(COARSE_STEP_SECONDS) },
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun TimeInput(
-    value: String,
-    onValueChange: (String) -> Unit,
-    onFocusChanged: (Boolean) -> Unit,
+private fun StepButton(
+    text: String,
+    description: String,
+    prominent: Boolean,
+    onStep: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var isFocused by remember { mutableStateOf(false) }
+    val haptics = LocalHapticFeedback.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
 
-    val backgroundColor by animateColorAsState(
-        targetValue = if (isFocused) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant,
-        animationSpec = ColorAnimationSpec,
-        label = "inputBg"
-    )
+    val step by rememberUpdatedState {
+        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        onStep()
+    }
 
-    val borderColor by animateColorAsState(
-        targetValue = if (isFocused) MaterialTheme.colorScheme.primary else Color.Transparent,
-        animationSpec = ColorAnimationSpec,
-        label = "inputBorder"
-    )
+    // Set while a hold is repeating, so releasing it does not add one more step
+    var repeated by remember { mutableStateOf(false) }
 
-    BasicTextField(
-        value = value,
-        onValueChange = onValueChange,
-        modifier = modifier
-            .height(64.dp)
-            .clip(InputShape)
-            .background(backgroundColor)
-            .border(2.dp, borderColor, InputShape)
-            .onFocusChanged {
-                isFocused = it.isFocused
-                onFocusChanged(it.isFocused)
-            },
-        textStyle = TextStyle(
-            fontFamily = BebasNeue,
-            fontSize = 40.sp,
-            color = MaterialTheme.colorScheme.onSurface,
-            textAlign = TextAlign.Center
-        ),
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        singleLine = true,
-        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-        decorationBox = { innerTextField ->
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                innerTextField()
+    LaunchedEffect(isPressed) {
+        if (isPressed) {
+            repeated = false
+            delay(HOLD_DELAY_MILLIS)
+            repeated = true
+            while (true) {
+                step()
+                delay(REPEAT_INTERVAL_MILLIS)
             }
         }
-    )
+    }
+
+    Box(
+        modifier = modifier
+            .clip(InputShape)
+            .background(if (prominent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                role = Role.Button,
+                onClick = { if (repeated) repeated = false else step() }
+            )
+            .semantics { contentDescription = description }
+            .height(if (prominent) 88.dp else 56.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            style = TextStyle(fontFamily = BebasNeue, fontSize = if (prominent) 44.sp else 28.sp, letterSpacing = 1.sp),
+            color = if (prominent) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.clearAndSetSemantics { }
+        )
+    }
 }
 
 @Composable
@@ -411,7 +438,7 @@ private fun UnitSelector(
     ) {
         PaceUnit.entries.forEach { unit ->
             UnitButton(
-                text = if (unit == PaceUnit.MILE) "min/mile" else "min/km",
+                text = unitLabel(unit),
                 isSelected = selectedUnit == unit,
                 onClick = { onUnitChange(unit) },
                 modifier = Modifier.weight(1f)
@@ -456,46 +483,35 @@ private fun UnitButton(
 }
 
 @Composable
-private fun ResultsGrid(result: PaceCalculator.PaceResult?, textMuted: Color) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ResultCard(
-                label = resultItems[0].label,
-                value = resultItems[0].getValue(result),
-                unit = resultItems[0].unit,
-                textMuted = textMuted,
-                modifier = Modifier.weight(1f)
-            )
-            ResultCard(
-                label = resultItems[1].label,
-                value = resultItems[1].getValue(result),
-                unit = resultItems[1].unit,
-                textMuted = textMuted,
-                modifier = Modifier.weight(1f)
-            )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ResultCard(
-                label = resultItems[2].label,
-                value = resultItems[2].getValue(result),
-                unit = resultItems[2].unit,
-                textMuted = textMuted,
-                modifier = Modifier.weight(1f)
-            )
-            ResultCard(
-                label = resultItems[3].label,
-                value = resultItems[3].getValue(result),
-                unit = resultItems[3].unit,
-                textMuted = textMuted,
-                modifier = Modifier.weight(1f)
-            )
-        }
+private fun ResultsRow(result: PaceCalculator.PaceResult?, inputUnit: PaceUnit, textMuted: Color) {
+    // The pace in the selected unit is the hero figure, so only the other one is listed
+    val otherUnit = if (inputUnit == PaceUnit.MILE) PaceUnit.KM else PaceUnit.MILE
+    val otherPace = if (otherUnit == PaceUnit.MILE) result?.minPerMile else result?.minPerKm
+
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        ResultCard(
+            value = otherPace ?: "—",
+            unit = unitLabel(otherUnit),
+            textMuted = textMuted,
+            modifier = Modifier.weight(1f)
+        )
+        ResultCard(
+            value = result?.mph?.let { "%.1f".format(it) } ?: "—",
+            unit = "mph",
+            textMuted = textMuted,
+            modifier = Modifier.weight(1f)
+        )
+        ResultCard(
+            value = result?.kph?.let { "%.1f".format(it) } ?: "—",
+            unit = "km/h",
+            textMuted = textMuted,
+            modifier = Modifier.weight(1f)
+        )
     }
 }
 
 @Composable
 private fun ResultCard(
-    label: String,
     value: String,
     unit: String,
     textMuted: Color,
@@ -511,24 +527,15 @@ private fun ResultCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .border(1.dp, MaterialTheme.colorScheme.outline, ResultCardShape)
-                .padding(20.dp),
+                .padding(vertical = 8.dp, horizontal = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = label.uppercase(),
-                style = MaterialTheme.typography.labelSmall,
-                color = textMuted
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
                 text = value,
-                style = TextStyle(fontFamily = BebasNeue, fontSize = 28.sp, letterSpacing = 1.sp),
-                color = MaterialTheme.colorScheme.onSurface
+                style = TextStyle(fontFamily = BebasNeue, fontSize = 36.sp, letterSpacing = 1.sp),
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1
             )
-
-            Spacer(modifier = Modifier.height(4.dp))
 
             Text(
                 text = unit,
@@ -542,33 +549,17 @@ private fun ResultCard(
 @Composable
 private fun RaceTimesGrid(result: PaceCalculator.PaceResult?, textMuted: Color) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            RaceTimeCard(
-                label = PaceCalculator.RaceDistance.FIVE_K.label,
-                time = result?.raceTimes?.get(PaceCalculator.RaceDistance.FIVE_K) ?: "—",
-                textMuted = textMuted,
-                modifier = Modifier.weight(1f)
-            )
-            RaceTimeCard(
-                label = PaceCalculator.RaceDistance.TEN_K.label,
-                time = result?.raceTimes?.get(PaceCalculator.RaceDistance.TEN_K) ?: "—",
-                textMuted = textMuted,
-                modifier = Modifier.weight(1f)
-            )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            RaceTimeCard(
-                label = PaceCalculator.RaceDistance.HALF_MARATHON.label,
-                time = result?.raceTimes?.get(PaceCalculator.RaceDistance.HALF_MARATHON) ?: "—",
-                textMuted = textMuted,
-                modifier = Modifier.weight(1f)
-            )
-            RaceTimeCard(
-                label = PaceCalculator.RaceDistance.MARATHON.label,
-                time = result?.raceTimes?.get(PaceCalculator.RaceDistance.MARATHON) ?: "—",
-                textMuted = textMuted,
-                modifier = Modifier.weight(1f)
-            )
+        PaceCalculator.RaceDistance.entries.chunked(2).forEach { races ->
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                races.forEach { race ->
+                    RaceTimeCard(
+                        label = race.label,
+                        time = result?.raceTimes?.get(race) ?: "—",
+                        textMuted = textMuted,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
         }
     }
 }
@@ -590,7 +581,7 @@ private fun RaceTimeCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .border(1.dp, MaterialTheme.colorScheme.outline, ResultCardShape)
-                .padding(20.dp),
+                .padding(vertical = 8.dp, horizontal = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
@@ -599,12 +590,11 @@ private fun RaceTimeCard(
                 color = textMuted
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
-
             Text(
                 text = time,
-                style = TextStyle(fontFamily = BebasNeue, fontSize = 28.sp, letterSpacing = 1.sp),
-                color = MaterialTheme.colorScheme.onSurface
+                style = TextStyle(fontFamily = BebasNeue, fontSize = 36.sp, letterSpacing = 1.sp),
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1
             )
         }
     }
