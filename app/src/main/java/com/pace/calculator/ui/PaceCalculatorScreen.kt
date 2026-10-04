@@ -33,6 +33,7 @@ import com.pace.calculator.PaceCalculator
 import com.pace.calculator.PaceUnit
 import com.pace.calculator.ui.theme.BebasNeue
 import com.pace.calculator.ui.theme.LocalPaceColors
+import kotlin.math.roundToLong
 
 // Shared shapes to avoid recreation
 private val CardShape = RoundedCornerShape(20.dp)
@@ -59,9 +60,6 @@ private val resultItems = listOf(
     ResultItem("Pace", { it?.minPerKm ?: "—" }, "min/km")
 )
 
-private const val MILES_PER_KM = 0.621371
-private const val KM_PER_MILE = 1.60934
-
 @Composable
 fun PaceCalculatorScreen(
     isDarkTheme: Boolean,
@@ -72,33 +70,33 @@ fun PaceCalculatorScreen(
     var seconds by remember { mutableStateOf("30") }
     var inputUnit by remember { mutableStateOf(PaceUnit.MILE) }
 
+    // Unrounded pace behind the fields after a unit toggle, so toggling never
+    // changes the pace. Cleared as soon as the user types a new value.
+    var convertedPace by remember { mutableStateOf<Double?>(null) }
+
     val paceColors = LocalPaceColors.current
 
-    val result by remember(minutes, seconds, inputUnit) {
+    fun paceSeconds(): Double {
+        val mins = minutes.toIntOrNull() ?: 0
+        val secs = seconds.toIntOrNull() ?: 0
+        return convertedPace ?: (mins * 60 + secs).toDouble()
+    }
+
+    val result by remember(minutes, seconds, inputUnit, convertedPace) {
         derivedStateOf {
-            val mins = minutes.toIntOrNull() ?: 0
-            val secs = seconds.toIntOrNull() ?: 0
-            PaceCalculator.calculate(mins, secs, inputUnit)
+            PaceCalculator.calculate(paceSeconds(), inputUnit)
         }
     }
 
     fun convertPace(newUnit: PaceUnit) {
         if (newUnit == inputUnit) return
 
-        val mins = minutes.toIntOrNull() ?: 0
-        val secs = seconds.toIntOrNull() ?: 0
-        val totalSeconds = mins * 60 + secs
+        val converted = PaceCalculator.convert(paceSeconds(), inputUnit, newUnit)
+        val rounded = converted.roundToLong()
 
-        val convertedSeconds = if (newUnit == PaceUnit.KM) {
-            // Converting from min/mile to min/km (shorter distance = faster pace)
-            (totalSeconds * MILES_PER_KM).toInt()
-        } else {
-            // Converting from min/km to min/mile (longer distance = slower pace)
-            (totalSeconds * KM_PER_MILE).toInt()
-        }
-
-        minutes = (convertedSeconds / 60).toString()
-        seconds = (convertedSeconds % 60).toString()
+        minutes = (rounded / 60).toString()
+        seconds = (rounded % 60).toString().padStart(2, '0')
+        convertedPace = converted
         inputUnit = newUnit
     }
 
@@ -122,9 +120,9 @@ fun PaceCalculatorScreen(
 
             InputCard(
                 minutes = minutes,
-                onMinutesChange = { minutes = it },
+                onMinutesChange = { minutes = it; convertedPace = null },
                 seconds = seconds,
-                onSecondsChange = { seconds = it },
+                onSecondsChange = { seconds = it; convertedPace = null },
                 inputUnit = inputUnit,
                 onUnitChange = { convertPace(it) },
                 textMuted = paceColors.textMuted
