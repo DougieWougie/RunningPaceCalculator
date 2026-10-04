@@ -92,8 +92,8 @@ val Typography = Typography(
     labelSmall = TextStyle(
         fontFamily = JetBrainsMono,
         fontWeight = FontWeight.SemiBold,
-        fontSize = 10.sp,
-        lineHeight = 14.sp,
+        fontSize = 12.sp,
+        lineHeight = 16.sp,
         letterSpacing = 2.sp
     )
 )

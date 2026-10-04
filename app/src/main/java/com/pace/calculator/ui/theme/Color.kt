@@ -9,7 +9,7 @@ val LightCard = Color(0xFFFFFFFF)
 val LightTextPrimary = Color(0xFF1A1A1A)
 val LightTextSecondary = Color(0xFF666666)
 val LightTextMuted = Color(0xFF595959)
-val LightAccent = Color(0xFFFF3D00)
+val LightAccent = Color(0xFFD43300)
 val LightBorder = Color(0x4D000000)
 val LightPulse = Color(0x40FF3D00)
 

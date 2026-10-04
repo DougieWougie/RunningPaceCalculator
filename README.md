@@ -82,9 +82,9 @@ The app uses system fonts by default. To use Bebas Neue and JetBrains Mono:
 
 ## Testing
 
-1. Enter pace values using minutes and seconds inputs
-2. Toggle between min/mile and min/km input units
-3. Verify all four result cards update correctly
-4. Test theme toggle (light/dark)
-5. Rotate device to verify layout adapts
-6. Kill and restart app to verify theme persists
+1. Run the automated tests with `./gradlew :app:testDebugUnitTest`
+2. Change the pace with the −5 / +5 and −1 / +1 buttons, and hold one to repeat
+3. Toggle between min/mile and min/km and verify the pace is unchanged
+4. Verify the pace, speed and race time figures update correctly
+5. Test theme toggle (light/dark)
+6. Kill and restart app to verify the pace, unit and theme persist
