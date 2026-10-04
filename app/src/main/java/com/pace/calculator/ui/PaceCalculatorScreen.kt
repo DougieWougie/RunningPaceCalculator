@@ -4,10 +4,10 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -15,15 +15,18 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -64,15 +67,20 @@ private val resultItems = listOf(
 fun PaceCalculatorScreen(
     isDarkTheme: Boolean,
     onToggleTheme: () -> Unit,
+    initialPaceSeconds: Double,
+    initialUnit: PaceUnit,
+    onPaceChange: (Double, PaceUnit) -> Unit,
     contentPadding: PaddingValues = PaddingValues()
 ) {
-    var minutes by remember { mutableStateOf("8") }
-    var seconds by remember { mutableStateOf("30") }
-    var inputUnit by remember { mutableStateOf(PaceUnit.MILE) }
+    val initialRounded = initialPaceSeconds.roundToLong()
+
+    var minutes by rememberSaveable { mutableStateOf((initialRounded / 60).toString()) }
+    var seconds by rememberSaveable { mutableStateOf((initialRounded % 60).toString().padStart(2, '0')) }
+    var inputUnit by rememberSaveable { mutableStateOf(initialUnit) }
 
     // Unrounded pace behind the fields after a unit toggle, so toggling never
     // changes the pace. Cleared as soon as the user types a new value.
-    var convertedPace by remember { mutableStateOf<Double?>(null) }
+    var convertedPace by rememberSaveable { mutableStateOf<Double?>(initialPaceSeconds) }
 
     val paceColors = LocalPaceColors.current
 
@@ -98,6 +106,11 @@ fun PaceCalculatorScreen(
         seconds = (rounded % 60).toString().padStart(2, '0')
         convertedPace = converted
         inputUnit = newUnit
+    }
+
+    val currentPace = paceSeconds()
+    LaunchedEffect(currentPace, inputUnit) {
+        if (currentPace > 0) onPaceChange(currentPace, inputUnit)
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -170,33 +183,38 @@ private fun AnimatedPulseBackground(pulseColor: Color) {
         )
     }
 
-    val scale by infiniteTransition.animateFloat(
+    val scale = infiniteTransition.animateFloat(
         initialValue = 0.6f,
         targetValue = 1.3f,
         animationSpec = animationSpec,
         label = "pulseScale"
     )
 
-    val alpha by infiniteTransition.animateFloat(
+    val alpha = infiniteTransition.animateFloat(
         initialValue = 0.3f,
         targetValue = 1f,
         animationSpec = animationSpec,
         label = "pulseAlpha"
     )
 
+    val brush = remember(pulseColor) {
+        Brush.radialGradient(
+            colors = listOf(pulseColor, Color.Transparent),
+            radius = 1200f
+        )
+    }
+
+    // Animated values are read in the layer block, so each frame only redraws
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .scale(scale)
-            .background(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        pulseColor.copy(alpha = alpha * pulseColor.alpha),
-                        Color.Transparent
-                    ),
-                    radius = 1200f
-                )
-            )
+            .graphicsLayer {
+                scaleX = scale.value
+                scaleY = scale.value
+                this.alpha = alpha.value
+                compositingStrategy = CompositingStrategy.ModulateAlpha
+            }
+            .background(brush)
     )
 }
 
@@ -292,51 +310,32 @@ private fun InputCard(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    TimeInput(
-                        value = minutes,
-                        onValueChange = { if (it.length <= 2) onMinutesChange(it.filter(Char::isDigit)) },
-                        onFocusChanged = { isFocused = it },
-                        modifier = Modifier.width(72.dp)
-                    )
+                TimeInput(
+                    value = minutes,
+                    onValueChange = { if (it.length <= 2) onMinutesChange(it.filter(Char::isDigit)) },
+                    onFocusChanged = { isFocused = it },
+                    modifier = Modifier.width(72.dp)
+                )
 
-                    Text(
-                        text = ":",
-                        style = TextStyle(fontFamily = BebasNeue, fontSize = 40.sp),
-                        color = textMuted
-                    )
+                Text(
+                    text = ":",
+                    style = TextStyle(fontFamily = BebasNeue, fontSize = 40.sp),
+                    color = textMuted
+                )
 
-                    TimeInput(
-                        value = seconds,
-                        onValueChange = { input ->
-                            if (input.length <= 2) {
-                                val filtered = input.filter(Char::isDigit)
-                                if ((filtered.toIntOrNull() ?: 0) <= 59) onSecondsChange(filtered)
-                            }
-                        },
-                        onFocusChanged = { isFocused = it },
-                        modifier = Modifier.width(72.dp)
-                    )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .clip(BadgeShape)
-                        .background(MaterialTheme.colorScheme.primary)
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                ) {
-                    Text(
-                        text = if (inputUnit == PaceUnit.MILE) "/mile" else "/km",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White
-                    )
-                }
+                TimeInput(
+                    value = seconds,
+                    onValueChange = { input ->
+                        if (input.length <= 2) {
+                            val filtered = input.filter(Char::isDigit)
+                            if ((filtered.toIntOrNull() ?: 0) <= 59) onSecondsChange(filtered)
+                        }
+                    },
+                    onFocusChanged = { isFocused = it },
+                    modifier = Modifier.width(72.dp)
+                )
             }
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -406,7 +405,8 @@ private fun UnitSelector(
             .fillMaxWidth()
             .clip(InputShape)
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(4.dp),
+            .padding(4.dp)
+            .selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         PaceUnit.entries.forEach { unit ->
@@ -439,17 +439,19 @@ private fun UnitButton(
         label = "unitBtnText"
     )
 
-    val interactionSource = remember { MutableInteractionSource() }
-
     Box(
         modifier = modifier
             .clip(BadgeShape)
             .background(backgroundColor)
-            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
-            .padding(vertical = 12.dp),
+            .selectable(selected = isSelected, role = Role.RadioButton, onClick = onClick)
+            .heightIn(min = 64.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(text = text, style = MaterialTheme.typography.labelLarge, color = textColor)
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge.copy(fontSize = 18.sp),
+            color = textColor
+        )
     }
 }
 
