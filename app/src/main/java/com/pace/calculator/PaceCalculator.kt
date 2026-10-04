@@ -1,7 +1,9 @@
 package com.pace.calculator
 
+import kotlin.math.roundToLong
+
 object PaceCalculator {
-    private const val MILES_TO_KM = 1.60934
+    private const val KM_PER_MILE = 1.609344
 
     enum class RaceDistance(val km: Double, val label: String) {
         FIVE_K(5.0, "5K"),
@@ -18,43 +20,42 @@ object PaceCalculator {
         val raceTimes: Map<RaceDistance, String>
     )
 
-    fun calculate(minutes: Int, seconds: Int, inputUnit: PaceUnit): PaceResult? {
-        val totalMinutes = minutes + seconds / 60.0
-        if (totalMinutes == 0.0) return null
+    // Pace is carried as seconds per unit and only rounded when formatted
+    fun calculate(paceSeconds: Double, inputUnit: PaceUnit): PaceResult? {
+        if (paceSeconds <= 0.0) return null
 
-        val (minPerMile, minPerKm) = when (inputUnit) {
-            PaceUnit.MILE -> totalMinutes to totalMinutes / MILES_TO_KM
-            PaceUnit.KM -> totalMinutes * MILES_TO_KM to totalMinutes
-        }
+        val secPerMile = convert(paceSeconds, inputUnit, PaceUnit.MILE)
+        val secPerKm = convert(paceSeconds, inputUnit, PaceUnit.KM)
 
         val raceTimes = RaceDistance.entries.associateWith { race ->
-            formatRaceTime(minPerKm * race.km)
+            formatDuration(secPerKm * race.km)
         }
 
         return PaceResult(
-            mph = 60.0 / minPerMile,
-            kph = 60.0 / minPerKm,
-            minPerMile = formatTime(minPerMile),
-            minPerKm = formatTime(minPerKm),
+            mph = 3600.0 / secPerMile,
+            kph = 3600.0 / secPerKm,
+            minPerMile = formatDuration(secPerMile),
+            minPerKm = formatDuration(secPerKm),
             raceTimes = raceTimes
         )
     }
 
-    private fun formatTime(totalMinutes: Double): String {
-        val mins = totalMinutes.toInt()
-        val secs = ((totalMinutes - mins) * 60).toInt()
-        return "$mins:${secs.toString().padStart(2, '0')}"
+    fun convert(paceSeconds: Double, from: PaceUnit, to: PaceUnit): Double = when {
+        from == to -> paceSeconds
+        to == PaceUnit.KM -> paceSeconds / KM_PER_MILE
+        else -> paceSeconds * KM_PER_MILE
     }
 
-    private fun formatRaceTime(totalMinutes: Double): String {
-        val hours = (totalMinutes / 60).toInt()
-        val mins = (totalMinutes % 60).toInt()
-        val secs = ((totalMinutes - totalMinutes.toInt()) * 60).toInt()
+    private fun formatDuration(totalSeconds: Double): String {
+        val rounded = totalSeconds.roundToLong()
+        val hours = rounded / 3600
+        val mins = rounded % 3600 / 60
+        val secs = (rounded % 60).toString().padStart(2, '0')
 
         return if (hours > 0) {
-            "$hours:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}"
+            "$hours:${mins.toString().padStart(2, '0')}:$secs"
         } else {
-            "$mins:${secs.toString().padStart(2, '0')}"
+            "$mins:$secs"
         }
     }
 }
